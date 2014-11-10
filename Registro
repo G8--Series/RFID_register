@@ -1,0 +1,150 @@
+#include <SoftwareSerial.h>
+#include <avr/pgmspace.h>
+String comando;
+String var1 = "";
+String inputString = "";         // a string to hold incoming data
+boolean stringComplete = false; 
+
+String Usuarios[2]={
+  "Yullian","Usuario"};
+prog_char tag_0[] PROGMEM = "030073410435"; //negro
+prog_char tag_1[] PROGMEM = "030071F746C3"; //azul
+
+PROGMEM const char *tag_table[] ={   
+  tag_0,
+  tag_1,
+};
+
+String mensaje;
+
+SoftwareSerial rfidReader(2,3); // Digital pins 2 and 3 connect to pins 1 and 2 of the RMD6300
+String tagString;
+char tagNumber[14];
+boolean receivedTag;
+
+String Registro[20][3]={
+  "Usuario","   Codigo   ","Hora"};
+
+
+
+void setup(){
+  Serial.begin(9600);
+  rfidReader.begin(9600); // the RDM6300 runs at 9600bps
+  pinMode(A4,OUTPUT);
+  pinMode(A5,OUTPUT);
+  S_UDP();
+}
+void loop(){
+  UDP_RX();
+  parseCommand();
+  RDM();
+  if(comando == "r"){
+    impresion(1);
+    comando="";
+  }
+  else{
+    if(comando == "c"){
+      impresion(2);
+      comando="";
+    }
+  }
+}
+
+void RDM(){
+  receivedTag=false;
+  while (rfidReader.available()){
+    int BytesRead = rfidReader.readBytesUntil(3, tagNumber, 15);//EOT (3) is the last character in tag 
+    receivedTag=true;
+  }  
+
+  if (receivedTag){
+    tagString=tagNumber;
+    Serial.println();
+    Serial.print("Tag Number: ");
+    Serial.println(tagString);
+
+    if (checkTag(tagString)){
+      //Serial.print("Tag Authorized...");
+      analogWrite(A5,255);
+    }
+    else{
+      //Serial.print("Unauthorized Tag: ");
+      delay(1500); // a delay of 1500ms and a flush() seems to stop tag repeats
+      analogWrite(A4,255);
+      rfidReader.flush();
+    }
+    memset(tagNumber,0,sizeof(tagNumber)); //erase tagNumber
+  }
+
+  delay(400);
+  analogWrite(A5,0);
+  analogWrite(A4,0);
+}
+
+boolean checkTag(String tag){
+  char testTag[14];
+
+  for (int i = 0; i < sizeof(tag_table)/2; i++)
+  {
+    strcpy_P(testTag, (char*)pgm_read_word(&(tag_table[i])));
+    if(tag.substring(1,13)==testTag){//substring function removes SOT and EOT
+      setRegistro(Usuarios[i],tag,"0");
+
+      return true;
+      break;
+    }
+  }
+
+  return false;
+}
+
+
+void setRegistro(String usuario,String codigo,String hora){
+
+  for(int f=1;f<21;f++){
+    if(Registro[f][0].equals("")){
+      Registro[f][0]=usuario;
+      Registro[f][1]=codigo;
+      Registro[f][2]=hora;
+      f=21;
+    }
+  }
+
+}
+
+
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read(); 
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a newline, set a flag
+    // so the main loop can do something about it:
+    if (inChar == '\n') {
+      stringComplete = true;
+      Serial.flush();
+    } 
+  }
+}
+
+void parseCommand(){
+  // print the string when a newline arrives:
+  if (stringComplete) {
+    inputString.trim();
+    //int separatorIndex = inputString.indexOf(',');
+    var1=inputString.substring(0,1);
+
+    // Serial.println(stringComplete);
+    //Serial.println("V1: "+var1);
+    //Serial.println("V2: "+var2);
+    //Serial.println("V3: "+var3);
+
+    //velocidad,accion/direccion,caja
+    comando=var1;
+    // clear the string:
+    inputString = "";
+    var1 = "";
+    stringComplete = false;
+  }
+}
